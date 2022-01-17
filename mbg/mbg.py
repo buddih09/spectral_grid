@@ -1,30 +1,153 @@
+import json
 import logging
-import os.path
-from copy import deepcopy
-from time import time
-
 import matplotlib.colors as colors
 import networkx as nx
 import networkx.algorithms.approximation.steinertree as nxs
+import os.path
+import overpy as oy
+import shapely.geometry as shg
+import shelve
+from copy import deepcopy
+from functools import partial
+# from map2graph._utils import treeize, pairwise
 from matplotlib import pyplot as plt
 from matplotlib.cm import get_cmap
-from numpy import asarray
+from numpy import asarray, Inf, mean, asarray
+from operator import itemgetter
 from overpy import Overpass
+from sys import version_info
+from time import time
 
 from .auxiliary_functions import this_dir, way_center, way_area, sort_box, _walk2
-from .auxiliary_functions import total_connect
+from .auxiliary_functions import total_connect, treeize
 from .grid_partitioner import partition_grid
 from .map_painting import DEFAULT_GRAPHIC_OPTS, _paint_map
+
+from urllib.request import urlopen
+from urllib.error import HTTPError
 
 DEFAULT_CONFIG = dict(
     daisy_chain=True
 )
 
-
 CONN_WEIGHTS = {'street': 0.6,
                 'link': 1.2,
                 'daisy_chain': 1.5,
                 'entry': 100}
+
+
+class _MapBoxEncoder(json.JSONEncoder):
+    def default(self, o):
+
+        if isinstance(o, oy.Way):
+            return {'nodes': o.nodes, 'id': o.id}
+
+        if isinstance(o, oy.Node):
+            return o.id
+
+        if hasattr(o, 'magnitude'):
+            return {'magnitude': o.magnitude, 'unit': o.units.__str__()}
+
+
+class _MockF:
+    def __init__(self, query, f):
+        self.code = f.code
+        self.query = query
+
+        try:
+            self._info = None
+            self._header = f.getheader("Content-Type")
+        except:
+            self._info = f.info()
+            self._header = None
+
+    def getheader(self, cty):
+        if cty != "Content-Type":
+            raise ValueError
+        elif self._header is None:
+            raise AttributeError
+        else:
+            return self._header
+
+    def info(self):
+        if self._info is None:
+            raise AttributeError
+        else:
+            return self._info
+
+    @staticmethod
+    def pretend_to_do_sthg():
+        pass
+
+
+class _SplitQueryOverpass(oy.Overpass):
+    # this mod is needed because oy.Result is not picklable and cannot be shelved, although the textual responses from
+    # openstreetmaps can. The query function is split in 2 in order to allow retrieval of this intermediate results for
+    # i/o purposes.
+    # The auxiliary method "query from file" is also added
+
+    def conclude_raw_query(self, response, f):
+
+        if f.code == 200:
+            # if PY2:
+            #     http_info = f.info()
+            #     content_type = http_info.getheader("content-type")
+            # else:
+            content_type = f.getheader("Content-Type")
+
+            if content_type == "application/json":
+                return self.parse_json(response)
+
+            if content_type == "application/osm3s+xml":
+                return self.parse_xml(response)
+
+            raise oy.exception.OverpassUnknownContentType(content_type)
+
+        if f.code == 400:
+            msgs = []
+            for msg in self._regex_extract_error_msg.finditer(response):
+                tmp = self._regex_remove_tag.sub(b"", msg.group("msg"))
+                try:
+                    tmp = tmp.decode("utf-8")
+                except UnicodeDecodeError:
+                    tmp = repr(tmp)
+                msgs.append(tmp)
+
+            raise oy.exception.OverpassBadRequest(
+                f.query,
+                msgs=msgs
+            )
+
+        if f.code == 429:
+            raise oy.exception.OverpassTooManyRequests
+
+        if f.code == 504:
+            raise oy.exception.OverpassGatewayTimeout
+
+        raise oy.exception.OverpassUnknownHTTPStatusCode(f.code)
+
+    def query_raw(self, query):
+        if not isinstance(query, bytes):
+            query = query.encode("utf-8")
+
+        try:
+            f = urlopen(self.url, query)
+        except HTTPError as e:
+            f = e
+
+        response = f.read(self.read_chunk_size)
+        while True:
+            data = f.read(self.read_chunk_size)
+            if len(data) == 0:
+                break
+            response = response + data
+        f.close()
+
+        return response, _MockF(query, f)
+
+    def query(self, query):
+        # overridden for coherence
+        return self.conclude_raw_query(*self.query_raw(query))
 
 
 class MapBoxGraph:
@@ -52,6 +175,8 @@ class MapBoxGraph:
         self.logger.addHandler(sh)
         self.logger.setLevel(log_level)
 
+        self.shelf_file = 'bobi.shf'
+
         # query and store
         bways, hways = self._query()
         self.downloaded_buildings = bways.ways
@@ -67,7 +192,7 @@ class MapBoxGraph:
         self._add_buildings(gr, buildings_cds)
         self._compute_links(gr, conn_weigths, parts, partitioning_kwargs)
 
-    def _query(self):
+    def _query_nkd(self):
         # we load the queries
         ovy = Overpass()
         bquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/bquery.txt'))
@@ -75,6 +200,43 @@ class MapBoxGraph:
 
         bways = ovy.query(bquery)
         hways = ovy.query(hquery)
+
+        return bways, hways
+
+    def _query(self):
+        # we load the queries
+        ovy = _SplitQueryOverpass()
+        bquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/bquery.txt'))
+        hquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/wquery.txt'))
+
+        if self.shelf_file is not None:
+            sh = shelve.open(self.shelf_file)
+
+            try:
+                # load
+                bways_raw, hways_raw, fb, fh = sh[str(hash(tuple(self.box)))]
+                if fb.code > 400 or fh.code > 400:  # meaning something went wrong last time
+                    raise KeyError
+                self.logger.debug('The box was found in the shelf')
+            except KeyError:
+                # download
+                self.logger.debug('Requesting box...')
+                bways_raw, fb = ovy.query_raw(bquery)
+                hways_raw, fh = ovy.query_raw(hquery)
+                self.logger.debug('Box downloaded...')
+                # save
+                sh[str(hash(tuple(self.box)))] = (bways_raw, hways_raw, fb, fh)
+                self.logger.debug('The box was queried and shelved')
+            finally:
+                sh.close()
+
+            # raw results were loaded, so we have to parse them
+            bways = ovy.conclude_raw_query(bways_raw, fb)
+            hways = ovy.conclude_raw_query(hways_raw, fh)
+
+        else:
+            bways = ovy.query(bquery)
+            hways = ovy.query(hquery)
 
         return bways, hways
 
@@ -152,7 +314,7 @@ class MapBoxGraph:
 
             gr_part.add_edge('trmain' + str(clno), barycenter, phases=3, type='entry')
             gr_part.nodes['trmain' + str(clno)]['type'] = 'source'
-            gr_part.nodes['trmain' + str(clno)]['pos'] = [x+0.000005 for x in gr_part.nodes[barycenter]['pos']]
+            gr_part.nodes['trmain' + str(clno)]['pos'] = [x + 0.000005 for x in gr_part.nodes[barycenter]['pos']]
 
             # removing loads not pertaining to this cluster (refines input)
             gr_part.remove_nodes_from([n for n in no if gr_part.nodes[n]['type'] == 'load' and n not in cluster])
@@ -269,13 +431,29 @@ class MapBoxGraph:
                                    node_color=[color_component] * len(nl_this), **nx_opts)
 
             # white center
-            nx.draw_networkx_nodes(sgee, nx.get_node_attributes(sgee, 'pos'), nl_this, go['bnode_size']*0.5,
+            nx.draw_networkx_nodes(sgee, nx.get_node_attributes(sgee, 'pos'), nl_this, go['bnode_size'] * 0.5,
                                    node_color='#ffffff', **nx_opts)
 
         _paint_map(self.box, plt, go, self.logger)
         plt.axis('equal')
         plt.show()
 
+    def as_digraphs(self):
+        dgs = []
+        for component in [nx.subgraph(self.g, n) for n in nx.connected_components(self.g)]:
+            root_node = [n for n, typ in nx.get_node_attributes(component, 'type').items() if typ == 'source']
+            assert len(root_node) == 1
+            root_node = root_node[0]
 
+            astr = treeize(component, root_node)
 
+            for n in astr.nodes:
+                for attr in component.nodes[n].keys():
+                    astr.nodes[n][attr] = component.nodes[n][attr]
 
+                for e in astr.edges:
+                    for attr in component.edges[e].keys():
+                        astr.edges[e][attr] = component.edges[e][attr]
+
+            dgs.append(astr)
+        return dgs

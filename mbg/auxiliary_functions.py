@@ -3,6 +3,8 @@ import random
 from collections import Counter
 from copy import deepcopy
 from math import radians as rad
+from scipy.interpolate import interp1d
+import csv
 
 import networkx as nx
 import numpy as np
@@ -10,6 +12,7 @@ from numpy import isclose, asarray, mean, argsort
 from tqdm import tqdm
 
 from .projection import project
+from types import MethodType
 
 R_EARTH = 6378137.0
 
@@ -239,3 +242,45 @@ def total_connect(gr: nx.Graph,
     # now we assign the lengths, which will be the weights for the mst search
     for ed in gr.edges:
         gr.edges[ed][length_attribute_name] = calc_length(gr, ed, 'pos') * connection_type_weigths[gr.edges[ed]['type']]
+
+
+def treeize(graph: nx.Graph, root_node):
+
+    def leaves(self):
+        return [x for x in self.nodes() if self.out_degree(x) == 0]
+
+    if not nx.is_tree(graph):
+        raise nx.NotATree('treeize needs a graph with a tree structure')
+
+    assert root_node in graph.nodes
+
+    bunched = [root_node]
+    group = [root_node]
+    tree = nx.DiGraph()
+    tree.leaves = MethodType(leaves, tree)
+
+    while group:
+        newgroup = []
+        for node in group:
+            neighborhood = graph.neighbors(node)
+            for neighbor in neighborhood:
+                if neighbor not in bunched:
+                    tree.add_edge(node, neighbor)
+                    bunched.append(neighbor)
+                    newgroup.append(neighbor)
+        group = newgroup
+
+    return tree
+
+def load_curve_csv(path):
+
+    x = []
+    y = []
+
+    with open(path, 'r') as csvFile:
+        reader = csv.reader(csvFile)
+        for row in reader:
+            x.append(row[0])
+            y.append(row[1])
+
+    return interp1d(np.float64(x), np.float64(y), bounds_error=False, assume_sorted=True, fill_value='extrapolate')
