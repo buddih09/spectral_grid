@@ -195,6 +195,7 @@ class MapBoxGraph:
     def _query_nkd(self):
         # we load the queries
         ovy = Overpass()
+
         bquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/bquery.txt'))
         hquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/wquery.txt'))
 
@@ -215,6 +216,10 @@ class MapBoxGraph:
             try:
                 # load
                 bways_raw, hways_raw, fb, fh = sh[str(hash(tuple(self.box)))]
+
+                print(bways_raw)
+                print(hways_raw)
+
                 if fb.code > 400 or fh.code > 400:  # meaning something went wrong last time
                     raise KeyError
                 self.logger.debug('The box was found in the shelf')
@@ -223,6 +228,10 @@ class MapBoxGraph:
                 self.logger.debug('Requesting box...')
                 bways_raw, fb = ovy.query_raw(bquery)
                 hways_raw, fh = ovy.query_raw(hquery)
+
+                print(bways_raw)
+                print(hways_raw)
+
                 self.logger.debug('Box downloaded...')
                 # save
                 sh[str(hash(tuple(self.box)))] = (bways_raw, hways_raw, fb, fh)

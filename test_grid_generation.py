@@ -41,7 +41,7 @@ if __name__ == '__main__':
     nominal_voltage = 400.0 * um.V
     voltage_drop = 15 * um.V
 
-    xp, yp = grid_locs(MOLINO_NUOVO, 2, 3)
+    xp, yp = grid_locs(MOLINO_NUOVO, 2, 2)
     splits = bbox_splits(xp, yp)
 
     for i, bb in enumerate(splits):
