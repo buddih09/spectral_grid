@@ -17,6 +17,8 @@ from operator import itemgetter
 from overpy import Overpass
 from sys import version_info
 from time import time
+import requests
+import xml.etree.ElementTree as ET
 
 from .auxiliary_functions import this_dir, way_center, way_area, sort_box, _walk2
 from .auxiliary_functions import total_connect, treeize
@@ -86,14 +88,11 @@ class _SplitQueryOverpass(oy.Overpass):
     # i/o purposes.
     # The auxiliary method "query from file" is also added
 
-    def conclude_raw_query(self, response, f):
+    def conclude_raw_query(self, res):
+        response = res.content
 
-        if f.code == 200:
-            # if PY2:
-            #     http_info = f.info()
-            #     content_type = http_info.getheader("content-type")
-            # else:
-            content_type = f.getheader("Content-Type")
+        if res.status_code == 200:
+            content_type = res.headers["Content-Type"]
 
             if content_type == "application/json":
                 return self.parse_json(response)
@@ -103,7 +102,7 @@ class _SplitQueryOverpass(oy.Overpass):
 
             raise oy.exception.OverpassUnknownContentType(content_type)
 
-        if f.code == 400:
+        if res.status_code == 400:
             msgs = []
             for msg in self._regex_extract_error_msg.finditer(response):
                 tmp = self._regex_remove_tag.sub(b"", msg.group("msg"))
@@ -114,17 +113,17 @@ class _SplitQueryOverpass(oy.Overpass):
                 msgs.append(tmp)
 
             raise oy.exception.OverpassBadRequest(
-                f.query,
+                res.request,
                 msgs=msgs
             )
 
-        if f.code == 429:
+        if res.status_code == 429:
             raise oy.exception.OverpassTooManyRequests
 
-        if f.code == 504:
+        if res.status_code == 504:
             raise oy.exception.OverpassGatewayTimeout
 
-        raise oy.exception.OverpassUnknownHTTPStatusCode(f.code)
+        raise oy.exception.OverpassUnknownHTTPStatusCode(res.status_code)
 
     def query_raw(self, query):
         if not isinstance(query, bytes):
@@ -161,7 +160,7 @@ class MapBoxGraph:
         as OpenStreetMap ways (paths of points)."""
 
         super().__init__()
-        self.box = sort_box(box)
+        self.box = sort_box(box)  # (x1, y1, x2, y2) coordinates
 
         # conf
         self.config = DEFAULT_CONFIG
@@ -175,6 +174,7 @@ class MapBoxGraph:
         self.logger.addHandler(sh)
         self.logger.setLevel(log_level)
 
+        # Cache instance
         self.shelf_file = 'bobi.shf'
 
         # query and store
@@ -194,46 +194,17 @@ class MapBoxGraph:
 
     def _query(self):
         """Load the query from the txt files and returns the XML results"""
-        ovy = _SplitQueryOverpass()
+        ovy = _SplitQueryOverpass(url="http://overpass-api.de/api/interpreter")
+
+        # These two lines generate the queries
         bquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/bquery.txt'))
         hquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/wquery.txt'))
 
-        if self.shelf_file is not None:
-            sh = shelve.open(self.shelf_file)
+        res_building = requests.get(ovy.url, params={'data': bquery})
+        res_highways = requests.get(ovy.url, params={'data': hquery})
 
-            try:
-                # load
-                bways_raw, hways_raw, fb, fh = sh[str(hash(tuple(self.box)))]
-
-                print(bways_raw)
-                print(hways_raw)
-
-                if fb.code > 400 or fh.code > 400:  # meaning something went wrong last time
-                    raise KeyError
-                self.logger.debug('The box was found in the shelf')
-            except KeyError:
-                # download
-                self.logger.debug('Requesting box...')
-                bways_raw, fb = ovy.query_raw(bquery)
-                hways_raw, fh = ovy.query_raw(hquery)
-
-                print(bways_raw)
-                print(hways_raw)
-
-                self.logger.debug('Box downloaded...')
-                # save
-                sh[str(hash(tuple(self.box)))] = (bways_raw, hways_raw, fb, fh)
-                self.logger.debug('The box was queried and shelved')
-            finally:
-                sh.close()
-
-            # raw results were loaded, so we have to parse them
-            bways = ovy.conclude_raw_query(bways_raw, fb)
-            hways = ovy.conclude_raw_query(hways_raw, fh)
-
-        else:
-            bways = ovy.query(bquery)
-            hways = ovy.query(hquery)
+        bways = ovy.conclude_raw_query(res_building)
+        hways = ovy.conclude_raw_query(res_highways)
 
         return bways, hways
 
@@ -454,3 +425,22 @@ class MapBoxGraph:
 
             dgs.append(astr)
         return dgs
+
+
+if __name__ == '__main__':
+
+    overpass_url = "http://overpass-api.de/api/interpreter"
+    overpass_query = """
+    [out:json];
+    area["ISO3166-1"="DE"][admin_level=2];
+    (node["amenity"="biergarten"](area);
+     way["amenity"="biergarten"](area);
+     rel["amenity"="biergarten"](area);
+    );
+    out center;
+    """
+    response = requests.get(overpass_url,
+                            params={'data': overpass_query})
+    data = response.json()
+
+    print(data)
