@@ -192,20 +192,8 @@ class MapBoxGraph:
         self._add_buildings(gr, buildings_cds)
         self._compute_links(gr, conn_weigths, parts, partitioning_kwargs)
 
-    def _query_nkd(self):
-        # we load the queries
-        ovy = Overpass()
-
-        bquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/bquery.txt'))
-        hquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/wquery.txt'))
-
-        bways = ovy.query(bquery)
-        hways = ovy.query(hquery)
-
-        return bways, hways
-
     def _query(self):
-        # we load the queries
+        """Load the query from the txt files and returns the XML results"""
         ovy = _SplitQueryOverpass()
         bquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/bquery.txt'))
         hquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/wquery.txt'))
