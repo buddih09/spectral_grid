@@ -9,7 +9,6 @@ import shapely.geometry as shg
 import shelve
 from copy import deepcopy
 from functools import partial
-# from map2graph._utils import treeize, pairwise
 from matplotlib import pyplot as plt
 from matplotlib.cm import get_cmap
 from numpy import asarray, Inf, mean, asarray
@@ -18,7 +17,6 @@ from overpy import Overpass
 from sys import version_info
 from time import time
 import requests
-import xml.etree.ElementTree as ET
 
 from .auxiliary_functions import this_dir, way_center, way_area, sort_box, _walk2
 from .auxiliary_functions import total_connect, treeize
@@ -151,7 +149,9 @@ class _SplitQueryOverpass(oy.Overpass):
 
 class MapBoxGraph:
 
-    def __init__(self, box,
+    def __init__(self,
+                 box,
+                 url="http://overpass-api.de/api/interpreter",
                  config={},
                  log_format='%(asctime)s (MapBoxGraph) %(levelname)s --> %(message)s',
                  log_level=logging.WARNING):
@@ -161,6 +161,7 @@ class MapBoxGraph:
 
         super().__init__()
         self.box = sort_box(box)  # (x1, y1, x2, y2) coordinates
+        self.url = url
 
         # conf
         self.config = DEFAULT_CONFIG
@@ -194,7 +195,7 @@ class MapBoxGraph:
 
     def _query(self):
         """Load the query from the txt files and returns the XML results"""
-        ovy = _SplitQueryOverpass(url="http://overpass-api.de/api/interpreter")
+        ovy = _SplitQueryOverpass(url=self.url)
 
         # These two lines generate the queries
         bquery = self._query_from_file(self.box, os.path.join(this_dir, '../queries/bquery.txt'))
