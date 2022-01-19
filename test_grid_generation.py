@@ -8,6 +8,85 @@ import networkx as nx
 
 matplotlib.use('Qt5Agg')
 
+
+def generate_grid_from_bbox(box_element):
+    mbg = MapBoxGraph(box_element, log_level=10)
+    mbg.compute([.25, .35, .4], maxiter=100, imbalance_tol=1e-1)
+    mbg.subplot(**GRAPHIC_OPTS)
+
+    pee = {b.id: assign_power_to_building(b) for b in mbg.downloaded_buildings}
+    for b, power in pee.items():
+        mbg.g.nodes[b][POWER_TAG] = power
+
+    cee = {b.id: assign_current_to_building(b, nominal_voltage) for b in mbg.downloaded_buildings}
+    for b, cur in cee.items():
+        mbg.g.nodes[b][CURRENT_TAG] = cur
+
+    print('Creating digraph')
+    dgraph = mbg.as_digraphs()  # Generates a list of nx.digraph objects for each subgraph
+
+    for ii, comp in enumerate(dgraph):
+
+        relo = {x: str(x) for x in comp.nodes}
+        nx.relabel_nodes(comp, relo)
+        cg = GridByK(name, comp, cb)
+
+        cg.compute(nominal_voltage, voltage_drop)
+
+        # kogo is the krang object: kogo.Ybus gives the Y-bus matrix
+        # kogo.<class name of the grid element> gives the list of those elements in the network
+        # kogo.save_json saves the json file of the network
+        # kp.Krang.from_json loads the network from the json
+
+        kogo = cg.get_krang()
+        kogo.snap()
+
+        lolo = kp.gv.AmpaView(kogo)
+        posi = nx.get_node_attributes(comp, 'pos')
+        del kogo
+
+        ampe = nx.get_edge_attributes(cg.dg, 'div_current')
+        ampe = {k: v.magnitude for k, v in ampe.items() if v is not None}
+
+        def fint(x):
+            try:
+                if '_' in x:
+                    return x
+            except TypeError:
+                pass
+            try:
+                return int(x)
+            except:
+                return x
+
+        ampel = []
+        edgeli = []
+
+        for kk, (lin_lin, x) in enumerate(ampe.items()):
+            edge = (fint(lin_lin[0]), fint(lin_lin[1]))
+
+            edgeli.append(edge)
+            if x is None:
+                ampel.append(1)
+            else:
+                ampel.append(x)
+
+        mamp = min(ampel)
+        delt = max(ampel) - mamp
+        ampel = [((x - mamp) / delt + 0.07) * 3 for x in ampel]
+
+        # mbox.subplot()
+        # lolo.remove_nodes_from(['trmain0', 'main_entry_0'])
+
+        nx.draw_networkx(nx.Graph(comp), pos=posi, nodelist=list(posi.keys()), width=ampel, edgelist=edgeli,
+                         with_labels=False, node_size=10)
+
+        nx.draw_networkx_nodes(nx.Graph(comp), pos=posi, node_color='red', node_size=30,
+                               nodelist=[x for x in posi.keys() if str(x).startswith('trmain')])
+
+    plt.show()
+
+
 if __name__ == '__main__':
 
     # AROSIO = (46.043510148612334,
@@ -44,83 +123,7 @@ if __name__ == '__main__':
     xp, yp = grid_locs(MOLINO_NUOVO, 2, 2)
     splits = bbox_splits(xp, yp)
 
+    # TODO: Put everything below into a function that can run parallel
+
     for i, bb in enumerate(splits):
-
-        print(f'{i} -> {bb}')
-
-        mbg = MapBoxGraph(bb, log_level=10)
-        mbg.compute([.25, .35, .4], maxiter=100, imbalance_tol=1e-1)
-        mbg.subplot(**GRAPHIC_OPTS)
-
-        pee = {b.id: assign_power_to_building(b) for b in mbg.downloaded_buildings}
-        for b, pow in pee.items():
-            mbg.g.nodes[b][POWER_TAG] = pow
-
-        cee = {b.id: assign_current_to_building(b, nominal_voltage) for b in mbg.downloaded_buildings}
-        for b, cur in cee.items():
-            mbg.g.nodes[b][CURRENT_TAG] = cur
-
-        print('Creating digraph')
-        dgra = mbg.as_digraphs()  # Generates a list of nx.digraph objects for each subgraph
-
-        for ii, comp in enumerate(dgra):
-
-            relo = {x: str(x) for x in comp.nodes}
-            nx.relabel_nodes(comp, relo)
-            cg = GridByK(name, comp, cb)
-
-            cg.compute(nominal_voltage, voltage_drop)
-
-            # kogo is the krang object: kogo.Ybus gives the Y-bus matrix
-            # kogo.<class name of the grid element> gives the list of those elements in the network
-            # kogo.save_json saves the json file of the network
-            # kp.Krang.from_json loads the network from the json
-
-            kogo = cg.get_krang()
-            kogo.snap()
-
-            lolo = kp.gv.AmpaView(kogo)
-            posi = nx.get_node_attributes(comp, 'pos')
-            del kogo
-
-            ampe = nx.get_edge_attributes(cg.dg, 'div_current')
-            ampe = {k: v.magnitude for k, v in ampe.items() if v is not None}
-
-            def fint(x):
-                try:
-                    if '_' in x:
-                        return x
-                except TypeError:
-                    pass
-                try:
-                    return int(x)
-                except:
-                    return x
-
-
-            ampel = []
-            edgeli = []
-
-            for kk, (lin_lin, x) in enumerate(ampe.items()):
-                edge = (fint(lin_lin[0]), fint(lin_lin[1]))
-
-                edgeli.append(edge)
-                if x is None:
-                    ampel.append(1)
-                else:
-                    ampel.append(x)
-
-            mamp = min(ampel)
-            delt = max(ampel) - mamp
-            ampel = [((x - mamp) / delt + 0.07) * 3 for x in ampel]
-
-            # mbox.subplot()
-            # lolo.remove_nodes_from(['trmain0', 'main_entry_0'])
-
-            nx.draw_networkx(nx.Graph(comp), pos=posi, nodelist=list(posi.keys()), width=ampel, edgelist=edgeli,
-                             with_labels=False, node_size=10)
-
-            nx.draw_networkx_nodes(nx.Graph(comp), pos=posi, node_color='red', node_size=30,
-                                   nodelist=[x for x in posi.keys() if str(x).startswith('trmain')])
-
-        plt.show()
+        generate_grid_from_bbox(bb)
