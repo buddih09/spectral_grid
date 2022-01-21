@@ -19,7 +19,7 @@ os.mkdir(results_dir)
 def generate_grid_from_bbox(box_id, box_element, path=results_dir):
     print(box_element)
     mbg = MapBoxGraph(box_element, log_level=10, url=url)
-    mbg.compute([1], maxiter=100, imbalance_tol=1e-1)
+    mbg.compute([0.35, 0.25, 0.4], maxiter=100, imbalance_tol=1e-1)
     print('Computing completed')
     # mbg.subplot(**GRAPHIC_OPTS)
 
