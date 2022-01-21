@@ -5,6 +5,7 @@ from map2grid import cablecollection_from_json, GridByK, assign_power_to_buildin
 from bbox_split import grid_locs, bbox_splits
 import krangpower as kp
 import networkx as nx
+from config import cables_files
 from multiprocessing import pool
 from memory_profiler import profile
 
@@ -119,8 +120,7 @@ if __name__ == '__main__':
     kp.set_log_level(10)
 
     name = 'prova'
-    cb = cablecollection_from_json(
-        r'C:/Users/charitha.heendeniya/PycharmProjects/spectral_grid_parent/map2grid/map2grid/data/ams_entities_2.json')
+    cb = cablecollection_from_json(cables_files)
     nominal_voltage = 400.0 * um.V
     voltage_drop = 15 * um.V
 
