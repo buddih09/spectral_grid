@@ -2,17 +2,21 @@ from mbg import MapBoxGraph
 import matplotlib
 import matplotlib.pyplot as plt
 from map2grid import cablecollection_from_json, GridByK, assign_power_to_building, assign_current_to_building
-from bbox_split.main import grid_locs, bbox_splits
+from bbox_split import grid_locs, bbox_splits
 import krangpower as kp
 import networkx as nx
+from multiprocessing import pool
+from memory_profiler import profile
 
 matplotlib.use('Qt5Agg')
 
 
 def generate_grid_from_bbox(box_element):
+    print(box_element)
     mbg = MapBoxGraph(box_element, log_level=10)
-    mbg.compute([.25, .35, .4], maxiter=100, imbalance_tol=1e-1)
-    mbg.subplot(**GRAPHIC_OPTS)
+    mbg.compute([1], maxiter=100, imbalance_tol=1e-1)
+    print('Computing completed')
+    # mbg.subplot(**GRAPHIC_OPTS)
 
     pee = {b.id: assign_power_to_building(b) for b in mbg.downloaded_buildings}
     for b, power in pee.items():
@@ -78,13 +82,13 @@ def generate_grid_from_bbox(box_element):
         # mbox.subplot()
         # lolo.remove_nodes_from(['trmain0', 'main_entry_0'])
 
-        nx.draw_networkx(nx.Graph(comp), pos=posi, nodelist=list(posi.keys()), width=ampel, edgelist=edgeli,
-                         with_labels=False, node_size=10)
-
-        nx.draw_networkx_nodes(nx.Graph(comp), pos=posi, node_color='red', node_size=30,
-                               nodelist=[x for x in posi.keys() if str(x).startswith('trmain')])
-
-    plt.show()
+    #     nx.draw_networkx(nx.Graph(comp), pos=posi, nodelist=list(posi.keys()), width=ampel, edgelist=edgeli,
+    #                      with_labels=False, node_size=10)
+    #
+    #     nx.draw_networkx_nodes(nx.Graph(comp), pos=posi, node_color='red', node_size=30,
+    #                            nodelist=[x for x in posi.keys() if str(x).startswith('trmain')])
+    #
+    # plt.show()
 
 
 if __name__ == '__main__':
@@ -120,10 +124,14 @@ if __name__ == '__main__':
     nominal_voltage = 400.0 * um.V
     voltage_drop = 15 * um.V
 
-    xp, yp = grid_locs(MOLINO_NUOVO, 2, 2)
+    xp, yp = grid_locs(MOLINO_NUOVO, 2, 3)
     splits = bbox_splits(xp, yp)
+    num_threads = 1
 
     # TODO: Put everything below into a function that can run parallel
 
-    for i, bb in enumerate(splits):
+    for bb in splits:
         generate_grid_from_bbox(bb)
+    #
+    # with pool.ThreadPool(num_threads) as p:
+    #     res = p.map(generate_grid_from_bbox, splits)
