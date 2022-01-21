@@ -8,11 +8,15 @@ import networkx as nx
 from config import cables_files, url
 from multiprocessing import pool
 from memory_profiler import profile
+from datetime import datetime
+import os
 
 matplotlib.use('Qt5Agg')
+results_dir = r"./results/" + datetime.now().strftime('%Y%m%d%H%M%S')
+os.mkdir(results_dir)
 
 
-def generate_grid_from_bbox(box_element):
+def generate_grid_from_bbox(box_id, box_element, path=results_dir):
     print(box_element)
     mbg = MapBoxGraph(box_element, log_level=10, url=url)
     mbg.compute([1], maxiter=100, imbalance_tol=1e-1)
@@ -30,7 +34,7 @@ def generate_grid_from_bbox(box_element):
     print('Creating digraph')
     dgraph = mbg.as_digraphs()  # Generates a list of nx.digraph objects for each subgraph
 
-    for ii, comp in enumerate(dgraph):
+    for ckt_id, comp in enumerate(dgraph):
 
         relo = {x: str(x) for x in comp.nodes}
         nx.relabel_nodes(comp, relo)
@@ -45,6 +49,9 @@ def generate_grid_from_bbox(box_element):
 
         kogo = cg.get_krang()
         kogo.snap()
+
+        print(dir(kogo))
+        kogo.save_json(f'{path}/{box_id}_{ckt_id}.json', indent=4)
 
         # lolo = kp.gv.AmpaView(kogo)
         # posi = nx.get_node_attributes(comp, 'pos')
@@ -99,15 +106,15 @@ if __name__ == '__main__':
     #           46.05036097561633,
     #           8.908238410949707)
 
-    # LUGANO = (45.99958511234106,
-    #           8.94510269165039,
-    #           45.92634956657254,
-    #           8.967718353271484)
+    LUGANO = (46.00179113613346,
+              8.94784927368164,
+              46.02235658377925,
+              8.976516723632812)
 
-    MOLINO_NUOVO = (46.01675400235616,
-                    8.95686149597168,
-                    46.01931695579516,
-                    8.961067199707031)
+    # MOLINO_NUOVO = (46.01675400235616,
+    #                 8.95686149597168,
+    #                 46.01931695579516,
+    #                 8.961067199707031)
 
     GRAPHIC_OPTS = {
         'node_shape': 'h',
@@ -124,14 +131,14 @@ if __name__ == '__main__':
     nominal_voltage = 400.0 * um.V
     voltage_drop = 15 * um.V
 
-    xp, yp = grid_locs(MOLINO_NUOVO, 2, 3)
+    xp, yp = grid_locs(LUGANO, x_divs=3, y_divs=4)
     splits = bbox_splits(xp, yp)
     num_threads = 1
 
     # TODO: Put everything below into a function that can run parallel
 
-    for bb in splits:
-        generate_grid_from_bbox(bb)
+    for num, bb in enumerate(splits):
+        generate_grid_from_bbox(num, bb)
     #
     # with pool.ThreadPool(num_threads) as p:
     #     res = p.map(generate_grid_from_bbox, splits)
