@@ -5,7 +5,7 @@ from map2grid import cablecollection_from_json, GridByK, assign_power_to_buildin
 from bbox_split import grid_locs, bbox_splits
 import krangpower as kp
 import networkx as nx
-from config import cables_files
+from config import cables_files, url
 from multiprocessing import pool
 from memory_profiler import profile
 
@@ -14,7 +14,7 @@ matplotlib.use('Qt5Agg')
 
 def generate_grid_from_bbox(box_element):
     print(box_element)
-    mbg = MapBoxGraph(box_element, log_level=10)
+    mbg = MapBoxGraph(box_element, log_level=10, url=url)
     mbg.compute([1], maxiter=100, imbalance_tol=1e-1)
     print('Computing completed')
     # mbg.subplot(**GRAPHIC_OPTS)
@@ -46,8 +46,8 @@ def generate_grid_from_bbox(box_element):
         kogo = cg.get_krang()
         kogo.snap()
 
-        lolo = kp.gv.AmpaView(kogo)
-        posi = nx.get_node_attributes(comp, 'pos')
+        # lolo = kp.gv.AmpaView(kogo)
+        # posi = nx.get_node_attributes(comp, 'pos')
         del kogo
 
         ampe = nx.get_edge_attributes(cg.dg, 'div_current')
