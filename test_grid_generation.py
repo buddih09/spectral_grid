@@ -16,10 +16,10 @@ results_dir = r"./results/" + datetime.now().strftime('%Y%m%d%H%M%S')
 os.mkdir(results_dir)
 
 
-def generate_grid_from_bbox(box_id, box_element, path=results_dir):
+def generate_graph_from_bbox(box_element):
     print(box_element)
     mbg = MapBoxGraph(box_element, log_level=10, url=url)
-    mbg.compute([0.35, 0.25, 0.4], maxiter=100, imbalance_tol=1e-1)
+    mbg.compute([0.2, 0.15, 0.15, 0.25, 0.1, 0.15], maxiter=100, imbalance_tol=1e-1)
     print('Computing completed')
     # mbg.subplot(**GRAPHIC_OPTS)
 
@@ -33,7 +33,10 @@ def generate_grid_from_bbox(box_id, box_element, path=results_dir):
 
     print('Creating digraph')
     dgraph = mbg.as_digraphs()  # Generates a list of nx.digraph objects for each subgraph
+    return dgraph
 
+
+def generate_grid(box_id, dgraph, path=results_dir):
     for ckt_id, comp in enumerate(dgraph):
 
         relo = {x: str(x) for x in comp.nodes}
@@ -50,7 +53,6 @@ def generate_grid_from_bbox(box_id, box_element, path=results_dir):
         kogo = cg.get_krang()
         kogo.snap()
 
-        print(dir(kogo))
         kogo.save_json(f'{path}/{box_id}_{ckt_id}.json', indent=4)
 
         # lolo = kp.gv.AmpaView(kogo)
@@ -111,10 +113,10 @@ if __name__ == '__main__':
               46.02235658377925,
               8.976516723632812)
 
-    # MOLINO_NUOVO = (46.01675400235616,
-    #                 8.95686149597168,
-    #                 46.01931695579516,
-    #                 8.961067199707031)
+    MOLINO_NUOVO = (46.01675400235616,
+                    8.95686149597168,
+                    46.01931695579516,
+                    8.961067199707031)
 
     GRAPHIC_OPTS = {
         'node_shape': 'h',
@@ -131,14 +133,13 @@ if __name__ == '__main__':
     nominal_voltage = 400.0 * um.V
     voltage_drop = 15 * um.V
 
-    xp, yp = grid_locs(LUGANO, x_divs=3, y_divs=4)
+    xp, yp = grid_locs(LUGANO, x_divs=1, y_divs=1)
     splits = bbox_splits(xp, yp)
     num_threads = 1
 
     # TODO: Put everything below into a function that can run parallel
 
     for num, bb in enumerate(splits):
-        generate_grid_from_bbox(num, bb)
-    #
-    # with pool.ThreadPool(num_threads) as p:
-    #     res = p.map(generate_grid_from_bbox, splits)
+        g = generate_graph_from_bbox(bb)
+
+    print(g)
