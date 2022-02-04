@@ -16,15 +16,20 @@ python3 test_core_partition.py -type comp --plot
 
 ```
 # Overpass local server
+Make a clone of overpass world. This gets a preprocessed planet file that is already indexed downloaded from an existing server. 
 ```
 sudo docker run \
 	-e OVERPASS_META=yes \
 	-e OVERPASS_MODE=clone \
 	-e OVERPASS_DIFF_URL=https://planet.openstreetmap.org/replication/minute/ \
-	-v /big/docker/overpass_clone_db/:/db \
+	-v <destination_directory_for_saving_data>:/db \
 	-p 80:80 \
 	-i -t \
 	--name overpass_world \
 	wiktorn/overpass-api
 
+```
+Run the docker container by,
+```
+sudo docker run -p 80:80 wiktorn/overpass-api
 ```
