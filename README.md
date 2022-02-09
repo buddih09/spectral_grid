@@ -16,6 +16,10 @@ python3 test_core_partition.py -type comp --plot
 
 ```
 # Overpass local server
+Pull overpass api docker image.
+```
+sudo docker pull wiktorn/overpass-api
+```
 Make a clone of overpass world. This gets a preprocessed planet file that is already indexed downloaded from an existing server. 
 ```
 sudo docker run \
