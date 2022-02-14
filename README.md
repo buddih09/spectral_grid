@@ -33,6 +33,10 @@ sudo docker run \
 	wiktorn/overpass-api
 
 ```
+Example: To initialize the container on Shiva...
+```
+sudo docker run -e OVERPASS_META=yes -e OVERPASS_MODE=clone -e OVERPASS_DIFF_URL=https://planet.openstreetmap.org/replication/minute/ -v "/media/queen/Data/EVA/overpass_db/:/db" -p 80:80 -i -t --name overpass_world wiktorn/overpass-api
+```
 Run the docker container by,
 ```
 sudo docker run -p 80:80 wiktorn/overpass-api
